@@ -1,14 +1,1 @@
-<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Burrow Fixtures</title> <style> body { margin: 0; padding: 20px; background: #f5f5f5; font-family: Arial, Helvetica, sans-serif; color: #222; } .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); } h1 { margin-top: 0; color: #111; } .intro { color: #555; margin-bottom: 20px; } #fixtures { width: 100%; min-height: 100px; } /* Hide the FA's promotional/footer links */ #fixtures a[href*="thefa.com/FULL-TIME"] { display: none; } </style> </head> <body> <div class="container"> <h1>Burrow Fixtures</h1>
-<p class="intro">
-  Fixtures being played at venues containing "Burrow".
-</p>
-
-<div id="fixtures">
-  <div id="lrep968752024">
-    Data loading....
-    <br><br>
-    <a href="http://www.thefa.com/FULL-TIME">FULL-TIME Home</a>
-  </div>
-</div>
-
-</div> <script> var lrcode = '968752024'; </script> <script type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"> </script> <script> /* * Filter the FA fixture feed to venues containing "Burrow". * This runs after the FA feed has loaded. */ function filterBurrowFixtures() { var container = document.getElementById('lrep968752024'); if (!container) return; var rows = container.querySelectorAll('tr'); rows.forEach(function(row) { var text = row.textContent || ''; if (!/burrow/i.test(text)) { row.style.display = 'none'; } }); } // Try several times because the FA feed loads asynchronously. var attempts = 0; var filterTimer = setInterval(function() { filterBurrowFixtures(); attempts++; if (attempts > 20) { clearInterval(filterTimer); } }, 500); </script> </body> </html>
+<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Burrow Fixtures</title> <style> body { margin: 0; padding: 20px; background: #f4f4f4; font-family: Arial, sans-serif; } .container { max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 10px; } h1 { margin-top: 0; } .description { color: #555; margin-bottom: 20px; } </style> </head> <body> <div class="container"> <h1>Burrow Fixtures</h1> <p class="description"> Fixtures at venues containing "Burrow". </p> <div id="lrep35550184" style="width: 100%;"> Data loading.... <a href="http://www.thefa.com/FULL-TIME">FULL-TIME Home</a> </div> </div> <script> var lrcode = '35550184'; </script> <script type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"> </script> </body> </html>
