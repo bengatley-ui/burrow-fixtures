@@ -1,25 +1,25 @@
 from datetime import datetime
 import json
 import re
+import subprocess
 from urllib.parse import urljoin
 
-from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
-FA_URL = (
-    "https://fulltime.thefa.com/fixtures.html"
+FIXTURES_URL = (
+    "https://fulltime.thefa.com/fixtures/1/50.html"
     "?selectedSeason=688737730"
     "&selectedFixtureGroupAgeGroup=0"
     "&selectedFixtureGroupKey="
-    "&selectedDateCode=all"
-    "&selectedClub=331632585"
-    "&selectedTeam="
-    "&selectedRelatedFixtureOption=3"
-    "&selectedFixtureDateStatus="
-    "&selectedFixtureStatus="
     "&previousSelectedFixtureGroupAgeGroup="
     "&previousSelectedFixtureGroupKey="
+    "&selectedDateCode=all"
+    "&selectedRelatedFixtureOption=3"
+    "&selectedClub=331632585"
     "&previousSelectedClub="
-    "&itemsPerPage=25"
+    "&selectedTeam="
+    "&selectedFixtureDateStatus="
+    "&selectedFixtureStatus="
 )
 
 TARGET_VENUE = "burrow's field"
@@ -48,109 +48,133 @@ def parse_date(text):
         return None
 
 
-def extract_fixtures(page):
+def fetch_fixtures_html():
+    """Fetch FA Full-Time with curl; its Cloudflare rules reject Playwright in GitHub Actions."""
+    result = subprocess.run(
+        [
+            "curl",
+            "--silent",
+            "--show-error",
+            "--fail-with-body",
+            "--location",
+            "--user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--header",
+            "Accept-Language: en-GB,en;q=0.9",
+            FIXTURES_URL,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"FA Full-Time request failed: {clean(result.stderr or result.stdout)}")
+
+    html = result.stdout
+    if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" in html.upper():
+        raise RuntimeError("FA Full-Time returned a Cloudflare access-block page.")
+
+    return html
+
+
+def parse_fixtures(html):
+    soup = BeautifulSoup(html, "html.parser")
     fixtures = []
 
-    tables = page.locator("table").all()
-    print(f"Found {len(tables)} tables on page")
-
-    for table in tables:
-        headers = [clean(th.inner_text()) for th in table.locator("thead th").all()]
-        if not headers:
+    for row in soup.select(".fixtures-table table tbody tr"):
+        cells = row.find_all("td", recursive=False)
+        if not cells:
             continue
 
-        print("Table headers:", headers)
+        def cell_text(css_class):
+            cell = row.select_one(f"td.{css_class}")
+            return clean(cell.get_text(" ", strip=True)) if cell else ""
 
-        indexes = {
-            "venue": next((i for i, h in enumerate(headers) if "venue" in h.casefold()), None),
-            "date": next((i for i, h in enumerate(headers) if "date" in h.casefold()), None),
-            "home": next((i for i, h in enumerate(headers) if "home team" in h.casefold()), None),
-            "away": next((i for i, h in enumerate(headers) if "away team" in h.casefold()), None),
-            "competition": next((i for i, h in enumerate(headers) if "competition" in h.casefold()), None),
-        }
-
-        if indexes["venue"] is None or indexes["date"] is None:
+        home = cell_text("home-team")
+        away = cell_text("road-team")
+        if not home or not away:
             continue
 
-        for row in table.locator("tbody tr").all():
-            cells = [clean(td.inner_text()) for td in row.locator("td").all()]
-            if len(cells) <= max(indexes["venue"], indexes["date"]):
-                continue
+        # FA Full-Time uses left/cell-divider cells for date, venue and competition.
+        left_cells = row.select("td.left.cell-divider")
+        left_text = [clean(cell.get_text(" ", strip=True)) for cell in left_cells]
+        if not left_text:
+            continue
 
-            date_text = cells[indexes["date"]]
-            fixture_date = parse_date(date_text)
-            if fixture_date is None:
-                continue
+        date_text = left_text[0]
+        fixture_date = parse_date(date_text)
+        if fixture_date is None:
+            continue
 
-            time_match = re.search(r"\b(\d{1,2}:\d{2})\b", date_text)
-            home_index = indexes["home"]
-            away_index = indexes["away"]
-            competition_index = indexes["competition"]
+        time_match = re.search(r"\b(\d{1,2}:\d{2})\b", date_text)
+        time = time_match.group(1) if time_match else ""
 
-            fixtures.append({
+        # On the current FA layout the remaining left-divider cells are venue and competition.
+        venue = left_text[1] if len(left_text) > 1 else ""
+        competition = left_text[2] if len(left_text) > 2 else ""
+
+        type_cell = row.select_one("td.bold.cell-divider a")
+        fixture_type = clean(type_cell.get_text(" ", strip=True)) if type_cell else ""
+
+        id_link = row.select_one('a[href*="id="]')
+        id_match = re.search(r"[?&]id=(\d+)", id_link.get("href", "")) if id_link else None
+        fixture_id = id_match.group(1) if id_match else ""
+
+        fixtures.append(
+            {
+                "id": fixture_id,
+                "type": fixture_type,
                 "date": fixture_date.strftime("%d/%m/%Y"),
                 "sort_date": fixture_date.isoformat(),
-                "time": time_match.group(1) if time_match else "",
-                "home": cells[home_index] if home_index is not None and home_index < len(cells) else "",
-                "away": cells[away_index] if away_index is not None and away_index < len(cells) else "",
-                "venue": cells[indexes["venue"]],
-                "competition": cells[competition_index] if competition_index is not None and competition_index < len(cells) else "",
-            })
+                "time": time,
+                "home": home,
+                "away": away,
+                "venue": venue,
+                "competition": competition,
+            }
+        )
 
     return fixtures
 
 
-def discover_page_urls(page):
-    page_urls = {page.url}
-    for link in page.locator("a").all():
-        try:
-            text = clean(link.inner_text())
-            href = link.get_attribute("href")
-            if href and text.isdigit():
-                page_urls.add(urljoin(page.url, href))
-        except Exception:
-            continue
-    return page_urls
-
-
 def main():
-    all_fixtures = []
+    print("Fetching FA Full-Time fixtures...")
+    html = fetch_fixtures_html()
+    all_fixtures = parse_fixtures(html)
+    print(f"Parsed {len(all_fixtures)} fixtures from FA Full-Time.")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        try:
-            print("Opening FA fixtures...")
-            page.goto(FA_URL, wait_until="networkidle", timeout=120000)
-            page.wait_for_timeout(3000)
-            print("Page title:", page.title())
-            print("Page URL:", page.url)
-            print("Body preview:", clean(page.locator("body").inner_text())[:3000])
-
-            page_urls = discover_page_urls(page)
-            print(f"Found {len(page_urls)} fixture pages.")
-
-            for url in sorted(page_urls):
-                try:
-                    print("Reading:", url)
-                    page.goto(url, wait_until="networkidle", timeout=120000)
-                    page.wait_for_timeout(1500)
-                    all_fixtures.extend(extract_fixtures(page))
-                except Exception as exc:
-                    print(f"Could not read page {url}: {exc}")
-        finally:
-            browser.close()
+    if not all_fixtures:
+        raise RuntimeError("No fixtures were parsed; the FA Full-Time page layout may have changed.")
 
     today = datetime.now().date()
-    upcoming = [f for f in all_fixtures if datetime.fromisoformat(f["sort_date"]).date() >= today]
-    fixtures = [f for f in upcoming if normalise_venue(f["venue"]) == TARGET_VENUE]
+    fixtures = [
+        fixture
+        for fixture in all_fixtures
+        if datetime.fromisoformat(fixture["sort_date"]).date() >= today
+        and normalise_venue(fixture["venue"]) == TARGET_VENUE
+    ]
 
     unique = {}
     for fixture in fixtures:
-        key = (fixture["sort_date"], fixture["time"], fixture["home"], fixture["away"], normalise_venue(fixture["venue"]))
+        key = (
+            fixture["sort_date"],
+            fixture["time"],
+            fixture["home"],
+            fixture["away"],
+            normalise_venue(fixture["venue"]),
+        )
         unique[key] = fixture
 
-    fixtures = sorted(unique.values(), key=lambda f: (f["sort_date"], f["time"], f["home"]))
+    fixtures = sorted(
+        unique.values(),
+        key=lambda fixture: (
+            fixture["sort_date"],
+            fixture["time"],
+            fixture["home"],
+        ),
+    )
 
     for fixture in fixtures:
         fixture.pop("sort_date", None)
@@ -159,7 +183,6 @@ def main():
         json.dump(fixtures, output, indent=2, ensure_ascii=False)
         output.write("\n")
 
-    print(f"Collected {len(all_fixtures)} total fixtures.")
     print(f"Saved {len(fixtures)} upcoming fixtures at Burrow's Field.")
 
 
