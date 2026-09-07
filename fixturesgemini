@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pumas Youth Football Fixtures</title>
+    <style>
+        /* Base styling for readability and accessibility */
+        :root {
+            --primary-text: #333333;
+            --background: #f9f9f9;
+            --focus-outline: #005fcc;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--primary-text);
+            background-color: var(--background);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        /* Accessible Form Styling */
+        .filter-container {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        input[type="text"]:focus {
+            outline: 3px solid var(--focus-outline);
+            border-color: var(--focus-outline);
+        }
+
+        /* Widget Container */
+        #lrep28535060 {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100% !important; /* Overrides the inline 350px width for better mobile viewing */
+            overflow-x: auto; /* Allows horizontal scroll on small screens */
+        }
+    </style>
+</head>
+<body>
+
+    <main>
+        <h1>Match Fixtures</h1>
+
+        <!-- Accessible Filter Input -->
+        <div class="filter-container">
+            <label for="venue-filter">Filter by Venue or Keyword (e.g., Burrows)</label>
+            <input 
+                type="text" 
+                id="venue-filter" 
+                placeholder="Type a venue name..." 
+                aria-controls="lrep28535060"
+                aria-describedby="filter-help"
+            >
+            <span id="filter-help" style="display:none;">As you type, the fixtures table will update to show only matching venues.</span>
+        </div>
+
+        <!-- The FA Full-Time Widget Container -->
+        <!-- aria-live="polite" tells screen readers when the FA script updates the content -->
+        <div id="lrep28535060" aria-live="polite">
+            <p>Data loading...</p>
+        </div>
+        
+        <!-- FA Scripts -->
+        <script language="javascript" type="text/javascript">
+            var lrcode = '28535060';
+        </script>
+        <script language="Javascript" type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"></script>
+
+    </main>
+
+    <!-- Custom Filtering Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const filterInput = document.getElementById('venue-filter');
+            const widgetContainer = document.getElementById('lrep28535060');
+
+            // Wait for the FA script to inject the table into the DOM
+            const observer = new MutationObserver((mutations, obs) => {
+                const rows = widgetContainer.querySelectorAll('tr');
+                
+                // If rows exist, the FA widget has loaded
+                if (rows.length > 0) {
+                    
+                    // Attach the filter event to the search box
+                    filterInput.addEventListener('input', function(e) {
+                        const searchTerm = e.target.value.toLowerCase();
+                        
+                        rows.forEach(row => {
+                            // Never hide the header row (contains <th> elements)
+                            if (row.querySelector('th')) return;
+                            
+                            // Check if the row text contains the search term
+                            const rowText = row.textContent.toLowerCase();
+                            if (rowText.includes(searchTerm)) {
+                                row.style.display = ''; // Show row
+                            } else {
+                                row.style.display = 'none'; // Hide row
+                            }
+                        });
+                    });
+
+                    // Stop observing once the table is loaded to save memory
+                    obs.disconnect(); 
+                }
+            });
+
+            // Start watching the container for the FA script to add child elements
+            observer.observe(widgetContainer, { childList: true, subtree: true });
+        });
+    </script>
+</body>
+</html>
