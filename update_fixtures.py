@@ -31,8 +31,7 @@ def clean(text):
 def normalise_venue(text):
     value = clean(text).casefold().replace("’", "'")
     value = re.sub(r"\s+#\w+$", "", value)
-    value = value.replace("'", "")
-    return value
+    return value.replace("'", "")
 
 
 def is_target_venue(text):
@@ -56,29 +55,17 @@ def parse_date(text):
 
 def curl(url, extra_headers=None):
     command = [
-        "curl",
-        "--silent",
-        "--show-error",
-        "--fail-with-body",
-        "--location",
+        "curl", "--silent", "--show-error", "--fail-with-body", "--location",
         "--user-agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "--header",
-        "Accept-Language: en-GB,en;q=0.9",
+        "--header", "Accept-Language: en-GB,en;q=0.9",
     ]
 
     for header in extra_headers or []:
         command.extend(["--header", header])
 
     command.append(url)
-
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
 
     if result.returncode != 0:
         raise RuntimeError(clean(result.stderr or result.stdout))
@@ -87,7 +74,6 @@ def curl(url, extra_headers=None):
 
 
 def fetch_fixtures_html():
-    """Use FA directly, then Jina Reader as a Cloudflare-safe fallback."""
     try:
         html = curl(FA_URL)
         if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" not in html.upper():
@@ -97,22 +83,25 @@ def fetch_fixtures_html():
     except RuntimeError as exc:
         print(f"Direct FA request failed: {exc}; using Jina Reader fallback.")
 
-    jina_url = "https://r.jina.ai/" + FA_URL
-    html = curl(
-        jina_url,
-        [
-            "X-Return-Format: html",
-            "X-Engine: browser",
-            "X-No-Cache: true",
-            "X-Timeout: 60",
-        ],
-    )
+    for reader_host in ("https://eu.r.jina.ai/", "https://r.jina.ai/"):
+        try:
+            print(f"Trying Jina Reader: {reader_host}")
+            html = curl(
+                reader_host + FA_URL,
+                [
+                    "X-Return-Format: html",
+                    "X-Engine: browser",
+                    "X-No-Cache: true",
+                    "X-Timeout: 60",
+                ],
+            )
+            if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" not in html.upper():
+                print(f"Fetched FA Full-Time through {reader_host}.")
+                return html
+        except RuntimeError as exc:
+            print(f"Jina Reader failed: {exc}")
 
-    if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" in html.upper():
-        raise RuntimeError("Both FA Full-Time and the Jina Reader returned a Cloudflare access-block page.")
-
-    print("Fetched FA Full-Time through Jina Reader.")
-    return html
+    raise RuntimeError("FA Full-Time is blocked from GitHub Actions and the Jina Reader fallbacks were unavailable.")
 
 
 def parse_fixtures(html):
@@ -145,21 +134,18 @@ def parse_fixtures(html):
 
         id_link = row.select_one('a[href*="id="]')
         id_match = re.search(r"[?&]id=(\d+)", id_link.get("href", "")) if id_link else None
-        fixture_id = id_match.group(1) if id_match else ""
 
-        fixtures.append(
-            {
-                "id": fixture_id,
-                "type": fixture_type,
-                "date": fixture_date.strftime("%d/%m/%Y"),
-                "sort_date": fixture_date.isoformat(),
-                "time": time_match.group(1) if time_match else "",
-                "home": home,
-                "away": away,
-                "venue": left_text[1] if len(left_text) > 1 else "",
-                "competition": left_text[2] if len(left_text) > 2 else "",
-            }
-        )
+        fixtures.append({
+            "id": id_match.group(1) if id_match else "",
+            "type": fixture_type,
+            "date": fixture_date.strftime("%d/%m/%Y"),
+            "sort_date": fixture_date.isoformat(),
+            "time": time_match.group(1) if time_match else "",
+            "home": home,
+            "away": away,
+            "venue": left_text[1] if len(left_text) > 1 else "",
+            "competition": left_text[2] if len(left_text) > 2 else "",
+        })
 
     return fixtures
 
@@ -175,8 +161,7 @@ def main():
 
     today = datetime.now().date()
     fixtures = [
-        fixture
-        for fixture in all_fixtures
+        fixture for fixture in all_fixtures
         if datetime.fromisoformat(fixture["sort_date"]).date() >= today
         and is_target_venue(fixture["venue"])
     ]
@@ -184,18 +169,14 @@ def main():
     unique = {}
     for fixture in fixtures:
         key = (
-            fixture["sort_date"],
-            fixture["time"],
-            fixture["home"],
-            fixture["away"],
+            fixture["sort_date"], fixture["time"], fixture["home"], fixture["away"],
             normalise_venue(fixture["venue"]),
         )
         unique[key] = fixture
 
-    fixtures = sorted(
-        unique.values(),
-        key=lambda fixture: (fixture["sort_date"], fixture["time"], fixture["home"]),
-    )
+    fixtures = sorted(unique.values(), key=lambda fixture: (
+        fixture["sort_date"], fixture["time"], fixture["home"]
+    ))
 
     for fixture in fixtures:
         fixture.pop("sort_date", None)
