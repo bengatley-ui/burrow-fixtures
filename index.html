@@ -5,128 +5,110 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Burrows Field Fixtures</title>
   <style>
-    body { margin: 0; background: #f3f4f6; font-family: Arial, Helvetica, sans-serif; color: #172033; }
-    .header { background: #123b25; color: white; padding: 28px 20px; }
-    .header-inner { max-width: 1000px; margin: auto; }
-    h1 { margin: 0 0 6px; font-size: 28px; }
-    .subtitle { margin: 0; opacity: .9; }
-    .container { max-width: 1000px; margin: 25px auto; padding: 0 15px; }
-    .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.08); overflow-x: auto; }
-    .loading { text-align: center; padding: 30px; color: #666; }
-    .error { color: #a00; padding: 20px 0; }
-
-    /* Make the official FA Full-Time feed fit the page. */
-    #lrep933106153 { width: 100% !important; }
-    #lrep933106153 table { width: 100%; border-collapse: collapse; }
-    #lrep933106153 th,
-    #lrep933106153 td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-    #lrep933106153 th { background: #f8fafc; font-weight: 700; }
-    #lrep933106153 a { color: #123b25; }
-
-    /* Rows that do not contain a Burrows Field venue are hidden by JavaScript below. */
-    #lrep933106153 .burrow-hidden { display: none !important; }
-
-    @media (max-width: 600px) {
-      .header { padding: 22px 15px; }
-      h1 { font-size: 23px; }
-      .card { padding: 15px; }
-      #lrep933106153 { font-size: 14px; }
-      #lrep933106153 th,
-      #lrep933106153 td { padding: 8px 5px; }
+    :root { --green:#123b25; --light:#f3f4f6; --border:#e5e7eb; --muted:#667085; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--light); font-family:Arial,Helvetica,sans-serif; color:#172033; }
+    .header { background:var(--green); color:white; padding:28px 20px; }
+    .header-inner,.container { max-width:1000px; margin:auto; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    .subtitle { margin:0; opacity:.9; }
+    .container { margin-top:25px; padding:0 15px; }
+    .card { background:white; border-radius:12px; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,.08); overflow-x:auto; }
+    .loading,.empty { text-align:center; padding:30px; color:var(--muted); }
+    .error { color:#a00; padding:20px 0; }
+    #lrep933106153 { width:100% !important; }
+    #lrep933106153 table { width:100%; border-collapse:collapse; }
+    #lrep933106153 th,#lrep933106153 td { padding:10px 8px; border-bottom:1px solid var(--border); text-align:left; }
+    #lrep933106153 th { background:#f8fafc; font-weight:700; }
+    #lrep933106153 a { color:var(--green); }
+    .burrow-hidden { display:none !important; }
+    @media (max-width:600px) {
+      .header { padding:22px 15px; } h1 { font-size:23px; } .card { padding:15px; }
+      #lrep933106153 { font-size:14px; }
+      #lrep933106153 th,#lrep933106153 td { padding:8px 5px; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
+  <header class="header">
     <div class="header-inner">
       <h1>Burrows Field Fixtures</h1>
       <p class="subtitle">Upcoming fixtures at Burrows Field</p>
     </div>
-  </div>
+  </header>
 
-  <div class="container">
-    <div class="card">
+  <main class="container">
+    <section class="card">
       <div id="feed-status" class="loading">Loading fixtures from FA Full-Time…</div>
 
-      <!--
-        This is the official FA Full-Time feed supplied for the club.
-        The feed is loaded by cs1.js; we filter its rendered fixture rows
-        locally so the page only shows matches at Burrows Field.
-      -->
-      <div id="lrep933106153" style="width: 350px;">
+      <div id="lrep933106153" style="width:350px;">
         Data loading....
-        <a href="null">click here for null</a><br/><br/>
-        <a href="http://www.thefa.com/FULL-TIME">FULL-TIME Home</a>
+        <a href="https://fulltime.thefa.com/">Open FA Full-Time</a>
       </div>
-      <script type="text/javascript">var lrcode = '933106153';</script>
-      <script type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"></script>
-    </div>
-  </div>
+    </section>
+  </main>
+
+  <!-- Official FA Full-Time feed supplied by the club. -->
+  <script>var lrcode = '933106153';</script>
+  <script src="https://fulltime.thefa.com/client/api/cs1.js" type="text/javascript"></script>
 
   <script>
     const FEED_ID = "lrep933106153";
     const VENUE_PATTERN = /burrows?\s+field/i;
+    const status = document.getElementById("feed-status");
+    const feed = document.getElementById(FEED_ID);
+
+    function clean(text) {
+      return (text || "").replace(/\s+/g, " ").trim();
+    }
 
     function filterFullTimeFeed() {
-      const feed = document.getElementById(FEED_ID);
-      const status = document.getElementById("feed-status");
-      if (!feed) return false;
-
-      // Full-Time normally renders fixtures as table rows. Keep only rows
-      // whose complete text contains Burrows Field (including pitch suffixes).
       const rows = [...feed.querySelectorAll("tr")];
-      if (rows.length) {
-        let visible = 0;
+      if (!rows.length) return false;
 
-        rows.forEach((row, index) => {
-          const text = row.textContent.replace(/\s+/g, " ").trim();
-          const isHeader = index === 0 && !VENUE_PATTERN.test(text);
-          const isFixture = /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text);
+      let fixturesSeen = 0;
+      let matchingFixtures = 0;
 
-          if (isFixture && !VENUE_PATTERN.test(text)) {
-            row.classList.add("burrow-hidden");
-          } else if (isFixture) {
-            row.classList.remove("burrow-hidden");
-            visible += 1;
-          } else if (isHeader) {
-            row.classList.remove("burrow-hidden");
-          }
-        });
+      rows.forEach(row => {
+        const text = clean(row.textContent);
+        const isFixture = /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text);
+        if (!isFixture) return;
 
-        status.style.display = "none";
-        if (visible === 0) {
-          status.className = "error";
-          status.textContent = "No upcoming fixtures at Burrows Field are currently listed.";
-          status.style.display = "block";
+        fixturesSeen++;
+        if (VENUE_PATTERN.test(text)) {
+          row.classList.remove("burrow-hidden");
+          matchingFixtures++;
+        } else {
+          row.classList.add("burrow-hidden");
         }
-        return true;
-      }
+      });
 
-      // If the feed has rendered but has not produced a table, wait for it.
-      const text = feed.textContent.replace(/\s+/g, " ").trim();
-      if (text && !/data loading/i.test(text)) {
-        status.style.display = "none";
+      if (fixturesSeen > 0) {
+        status.className = matchingFixtures ? "" : "empty";
+        status.textContent = matchingFixtures
+          ? `${matchingFixtures} upcoming fixture${matchingFixtures === 1 ? "" : "s"} at Burrows Field`
+          : "No upcoming fixtures at Burrows Field are currently listed.";
         return true;
       }
 
       return false;
     }
 
-    const feed = document.getElementById(FEED_ID);
-    const observer = new MutationObserver(() => filterFullTimeFeed());
-    observer.observe(feed, { childList: true, subtree: true });
+    // cs1.js populates the feed asynchronously, so watch the feed and retry.
+    const observer = new MutationObserver(filterFullTimeFeed);
+    observer.observe(feed, { childList:true, subtree:true });
 
-    // The feed loads asynchronously, so retry for a short period after cs1.js runs.
     let attempts = 0;
     const timer = setInterval(() => {
-      attempts += 1;
-      if (filterFullTimeFeed() || attempts >= 60) {
+      attempts++;
+      if (filterFullTimeFeed()) {
         clearInterval(timer);
-        if (attempts >= 60 && !filterFullTimeFeed()) {
-          const status = document.getElementById("feed-status");
-          status.className = "error";
-          status.textContent = "The FA Full-Time fixture feed could not be loaded right now.";
-        }
+        observer.disconnect();
+      } else if (attempts >= 60) {
+        clearInterval(timer);
+        observer.disconnect();
+        status.className = "error";
+        status.textContent = "The FA Full-Time fixture feed could not be loaded right now.";
       }
     }, 500);
   </script>
