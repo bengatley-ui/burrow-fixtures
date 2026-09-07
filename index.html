@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Burrow Field Fixtures</title>
+  <title>Burrows Field Fixtures</title>
   <style>
     body { margin: 0; background: #f3f4f6; font-family: Arial, Helvetica, sans-serif; color: #172033; }
     .header { background: #123b25; color: white; padding: 28px 20px; }
@@ -11,81 +11,124 @@
     h1 { margin: 0 0 6px; font-size: 28px; }
     .subtitle { margin: 0; opacity: .9; }
     .container { max-width: 1000px; margin: 25px auto; padding: 0 15px; }
-    .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
-    .fixture { border-bottom: 1px solid #e5e7eb; padding: 18px 0; }
-    .fixture:last-child { border-bottom: 0; }
-    .date { color: #123b25; font-weight: bold; margin-bottom: 7px; }
-    .teams { font-size: 18px; font-weight: bold; }
-    .venue { margin-top: 8px; color: #555; }
-    .competition { margin-top: 5px; color: #777; font-size: 14px; }
+    .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.08); overflow-x: auto; }
     .loading { text-align: center; padding: 30px; color: #666; }
     .error { color: #a00; padding: 20px 0; }
+
+    /* Make the official FA Full-Time feed fit the page. */
+    #lrep933106153 { width: 100% !important; }
+    #lrep933106153 table { width: 100%; border-collapse: collapse; }
+    #lrep933106153 th,
+    #lrep933106153 td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    #lrep933106153 th { background: #f8fafc; font-weight: 700; }
+    #lrep933106153 a { color: #123b25; }
+
+    /* Rows that do not contain a Burrows Field venue are hidden by JavaScript below. */
+    #lrep933106153 .burrow-hidden { display: none !important; }
+
     @media (max-width: 600px) {
       .header { padding: 22px 15px; }
       h1 { font-size: 23px; }
       .card { padding: 15px; }
-      .teams { font-size: 16px; }
+      #lrep933106153 { font-size: 14px; }
+      #lrep933106153 th,
+      #lrep933106153 td { padding: 8px 5px; }
     }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-inner">
-      <h1>Burrow Field Fixtures</h1>
-      <p class="subtitle">Upcoming fixtures at Burrow’s Field</p>
+      <h1>Burrows Field Fixtures</h1>
+      <p class="subtitle">Upcoming fixtures at Burrows Field</p>
     </div>
   </div>
 
   <div class="container">
     <div class="card">
-      <div id="fixtures" class="loading">Loading fixtures…</div>
+      <div id="feed-status" class="loading">Loading fixtures from FA Full-Time…</div>
+
+      <!--
+        This is the official FA Full-Time feed supplied for the club.
+        The feed is loaded by cs1.js; we filter its rendered fixture rows
+        locally so the page only shows matches at Burrows Field.
+      -->
+      <div id="lrep933106153" style="width: 350px;">
+        Data loading....
+        <a href="null">click here for null</a><br/><br/>
+        <a href="http://www.thefa.com/FULL-TIME">FULL-TIME Home</a>
+      </div>
+      <script type="text/javascript">var lrcode = '933106153';</script>
+      <script type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"></script>
     </div>
   </div>
 
   <script>
-    async function loadFixtures() {
-      const container = document.getElementById("fixtures");
+    const FEED_ID = "lrep933106153";
+    const VENUE_PATTERN = /burrows?\s+field/i;
 
-      try {
-        const response = await fetch("fixtures.json?cache=" + Date.now());
-        if (!response.ok) {
-          throw new Error("Fixtures could not be loaded.");
+    function filterFullTimeFeed() {
+      const feed = document.getElementById(FEED_ID);
+      const status = document.getElementById("feed-status");
+      if (!feed) return false;
+
+      // Full-Time normally renders fixtures as table rows. Keep only rows
+      // whose complete text contains Burrows Field (including pitch suffixes).
+      const rows = [...feed.querySelectorAll("tr")];
+      if (rows.length) {
+        let visible = 0;
+
+        rows.forEach((row, index) => {
+          const text = row.textContent.replace(/\s+/g, " ").trim();
+          const isHeader = index === 0 && !VENUE_PATTERN.test(text);
+          const isFixture = /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text);
+
+          if (isFixture && !VENUE_PATTERN.test(text)) {
+            row.classList.add("burrow-hidden");
+          } else if (isFixture) {
+            row.classList.remove("burrow-hidden");
+            visible += 1;
+          } else if (isHeader) {
+            row.classList.remove("burrow-hidden");
+          }
+        });
+
+        status.style.display = "none";
+        if (visible === 0) {
+          status.className = "error";
+          status.textContent = "No upcoming fixtures at Burrows Field are currently listed.";
+          status.style.display = "block";
         }
-
-        const fixtures = await response.json();
-
-        if (!fixtures.length) {
-          container.innerHTML = "<p>No upcoming fixtures at Burrow’s Field are currently listed.</p>";
-          return;
-        }
-
-        container.className = "";
-        container.innerHTML = fixtures.map(f => `
-          <div class="fixture">
-            <div class="date">${escapeHtml(f.date)}${f.time ? " • " + escapeHtml(f.time) : ""}</div>
-            <div class="teams">
-              ${escapeHtml(f.home)} <span style="font-weight:normal">v</span> ${escapeHtml(f.away)}
-            </div>
-            <div class="venue">📍 ${escapeHtml(f.venue)}</div>
-            ${f.competition ? `<div class="competition">${escapeHtml(f.competition)}</div>` : ""}
-          </div>
-        `).join("");
-      } catch (error) {
-        container.className = "error";
-        container.innerHTML = "Sorry, the fixtures could not be loaded right now. Please try again later.";
+        return true;
       }
+
+      // If the feed has rendered but has not produced a table, wait for it.
+      const text = feed.textContent.replace(/\s+/g, " ").trim();
+      if (text && !/data loading/i.test(text)) {
+        status.style.display = "none";
+        return true;
+      }
+
+      return false;
     }
 
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
+    const feed = document.getElementById(FEED_ID);
+    const observer = new MutationObserver(() => filterFullTimeFeed());
+    observer.observe(feed, { childList: true, subtree: true });
 
-    loadFixtures();
+    // The feed loads asynchronously, so retry for a short period after cs1.js runs.
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (filterFullTimeFeed() || attempts >= 60) {
+        clearInterval(timer);
+        if (attempts >= 60 && !filterFullTimeFeed()) {
+          const status = document.getElementById("feed-status");
+          status.className = "error";
+          status.textContent = "The FA Full-Time fixture feed could not be loaded right now.";
+        }
+      }
+    }, 500);
   </script>
 </body>
 </html>
