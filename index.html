@@ -6,7 +6,7 @@
   <title>Burrows Field Fixtures</title>
   <style>
     :root { --green:#123b25; --light:#f3f4f6; --border:#e5e7eb; --muted:#667085; }
-    * { box-sizing: border-box; }
+    * { box-sizing:border-box; }
     body { margin:0; background:var(--light); font-family:Arial,Helvetica,sans-serif; color:#172033; }
     .header { background:var(--green); color:white; padding:28px 20px; }
     .header-inner,.container { max-width:1000px; margin:auto; }
@@ -41,29 +41,31 @@
     <section class="card">
       <div id="feed-status" class="loading">Loading fixtures from FA Full-Time…</div>
 
+      <!-- This is the official FA Full-Time embed supplied for this feed. -->
       <div id="lrep933106153" style="width:350px;">
-        Data loading....
-        <a href="https://fulltime.thefa.com/">Open FA Full-Time</a>
+        Data loading....<a href="https://fulltime.thefa.com/">Open FA Full-Time</a><br><br>
+        <a href="https://www.thefa.com/FULL-TIME">FULL-TIME Home</a>
       </div>
+      <script type="text/javascript">var lrcode = '933106153';</script>
+      <script type="text/javascript" src="https://fulltime.thefa.com/client/api/cs1.js"></script>
     </section>
   </main>
 
-  <!-- Official FA Full-Time feed supplied by the club. -->
-  <script>var lrcode = '933106153';</script>
-  <script src="https://fulltime.thefa.com/client/api/cs1.js" type="text/javascript"></script>
-
   <script>
-    const FEED_ID = "lrep933106153";
-    const VENUE_PATTERN = /burrows?\s+field/i;
-    const status = document.getElementById("feed-status");
+    const FEED_ID = 'lrep933106153';
+    const VENUE_PATTERN = /burrows?(?:['’]s)?\s+field/i;
+    const status = document.getElementById('feed-status');
     const feed = document.getElementById(FEED_ID);
+    let lastFixtureCount = 0;
 
     function clean(text) {
-      return (text || "").replace(/\s+/g, " ").trim();
+      return (text || '').replace(/\s+/g, ' ').trim();
     }
 
     function filterFullTimeFeed() {
-      const rows = [...feed.querySelectorAll("tr")];
+      if (!feed) return false;
+
+      const rows = [...feed.querySelectorAll('tr')];
       if (!rows.length) return false;
 
       let fixturesSeen = 0;
@@ -71,31 +73,30 @@
 
       rows.forEach(row => {
         const text = clean(row.textContent);
-        const isFixture = /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text);
+        const isFixture = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(text);
         if (!isFixture) return;
 
         fixturesSeen++;
         if (VENUE_PATTERN.test(text)) {
-          row.classList.remove("burrow-hidden");
+          row.classList.remove('burrow-hidden');
           matchingFixtures++;
         } else {
-          row.classList.add("burrow-hidden");
+          row.classList.add('burrow-hidden');
         }
       });
 
       if (fixturesSeen > 0) {
-        status.className = matchingFixtures ? "" : "empty";
+        lastFixtureCount = fixturesSeen;
+        status.className = matchingFixtures ? '' : 'empty';
         status.textContent = matchingFixtures
-          ? `${matchingFixtures} upcoming fixture${matchingFixtures === 1 ? "" : "s"} at Burrows Field`
-          : "No upcoming fixtures at Burrows Field are currently listed.";
+          ? `${matchingFixtures} upcoming fixture${matchingFixtures === 1 ? '' : 's'} at Burrows Field`
+          : 'No upcoming fixtures at Burrows Field are currently listed.';
         return true;
       }
-
       return false;
     }
 
-    // cs1.js populates the feed asynchronously, so watch the feed and retry.
-    const observer = new MutationObserver(filterFullTimeFeed);
+    const observer = new MutationObserver(() => filterFullTimeFeed());
     observer.observe(feed, { childList:true, subtree:true });
 
     let attempts = 0;
@@ -104,11 +105,12 @@
       if (filterFullTimeFeed()) {
         clearInterval(timer);
         observer.disconnect();
-      } else if (attempts >= 60) {
+      } else if (attempts >= 30) {
         clearInterval(timer);
         observer.disconnect();
-        status.className = "error";
-        status.textContent = "The FA Full-Time fixture feed could not be loaded right now.";
+        status.className = 'error';
+        status.innerHTML = 'The FA Full-Time feed has not returned fixture data. ' +
+          '<a href="https://fulltime.thefa.com/" target="_blank" rel="noopener">Open the official FA Full-Time feed</a>.';
       }
     }, 500);
   </script>
