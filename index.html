@@ -21,7 +21,6 @@
     #lrep933106153 th,#lrep933106153 td { padding:10px 8px; border-bottom:1px solid var(--border); text-align:left; }
     #lrep933106153 th { background:#f8fafc; font-weight:700; }
     #lrep933106153 a { color:var(--green); }
-    .burrow-hidden { display:none !important; }
     @media (max-width:600px) {
       .header { padding:22px 15px; } h1 { font-size:23px; } .card { padding:15px; }
       #lrep933106153 { font-size:14px; }
@@ -41,7 +40,6 @@
     <section class="card">
       <div id="feed-status" class="loading">Loading fixtures from FA Full-Time…</div>
 
-      <!-- This is the official FA Full-Time embed supplied for this feed. -->
       <div id="lrep933106153" style="width:350px;">
         Data loading....<a href="https://fulltime.thefa.com/">Open FA Full-Time</a><br><br>
         <a href="https://www.thefa.com/FULL-TIME">FULL-TIME Home</a>
@@ -54,9 +52,9 @@
   <script>
     const FEED_ID = 'lrep933106153';
     const VENUE_PATTERN = /burrows?(?:['’]s)?\s+field/i;
+    const DATE_PATTERN = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/;
     const status = document.getElementById('feed-status');
     const feed = document.getElementById(FEED_ID);
-    let lastFixtureCount = 0;
 
     function clean(text) {
       return (text || '').replace(/\s+/g, ' ').trim();
@@ -73,29 +71,30 @@
 
       rows.forEach(row => {
         const text = clean(row.textContent);
-        const isFixture = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(text);
-        if (!isFixture) return;
+        if (!DATE_PATTERN.test(text)) return;
 
         fixturesSeen++;
         if (VENUE_PATTERN.test(text)) {
-          row.classList.remove('burrow-hidden');
           matchingFixtures++;
         } else {
-          row.classList.add('burrow-hidden');
+          // Remove non-Burrows fixtures entirely. This is more reliable than
+          // CSS hiding against the markup produced by the FA Full-Time feed.
+          row.remove();
         }
       });
 
       if (fixturesSeen > 0) {
-        lastFixtureCount = fixturesSeen;
         status.className = matchingFixtures ? '' : 'empty';
         status.textContent = matchingFixtures
           ? `${matchingFixtures} upcoming fixture${matchingFixtures === 1 ? '' : 's'} at Burrows Field`
           : 'No upcoming fixtures at Burrows Field are currently listed.';
         return true;
       }
+
       return false;
     }
 
+    // The FA feed renders asynchronously, so keep watching while it populates.
     const observer = new MutationObserver(() => filterFullTimeFeed());
     observer.observe(feed, { childList:true, subtree:true });
 
@@ -103,9 +102,9 @@
     const timer = setInterval(() => {
       attempts++;
       if (filterFullTimeFeed()) {
+        setTimeout(() => observer.disconnect(), 5000);
         clearInterval(timer);
-        observer.disconnect();
-      } else if (attempts >= 30) {
+      } else if (attempts >= 60) {
         clearInterval(timer);
         observer.disconnect();
         status.className = 'error';
