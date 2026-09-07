@@ -2,11 +2,10 @@ from datetime import datetime
 import json
 import re
 import subprocess
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-FIXTURES_URL = (
+FA_URL = (
     "https://fulltime.thefa.com/fixtures/1/50.html"
     "?selectedSeason=688737730"
     "&selectedFixtureGroupAgeGroup=0"
@@ -22,7 +21,7 @@ FIXTURES_URL = (
     "&selectedFixtureStatus="
 )
 
-TARGET_VENUE = "burrow's field"
+TARGET_VENUE = "burrows field"
 
 
 def clean(text):
@@ -30,7 +29,14 @@ def clean(text):
 
 
 def normalise_venue(text):
-    return clean(text).casefold().replace("’", "'")
+    value = clean(text).casefold().replace("’", "'")
+    value = re.sub(r"\s+#\w+$", "", value)
+    value = value.replace("'", "")
+    return value
+
+
+def is_target_venue(text):
+    return normalise_venue(text) == TARGET_VENUE
 
 
 def parse_date(text):
@@ -48,21 +54,26 @@ def parse_date(text):
         return None
 
 
-def fetch_fixtures_html():
-    """Fetch FA Full-Time with curl; its Cloudflare rules reject Playwright in GitHub Actions."""
+def curl(url, extra_headers=None):
+    command = [
+        "curl",
+        "--silent",
+        "--show-error",
+        "--fail-with-body",
+        "--location",
+        "--user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "--header",
+        "Accept-Language: en-GB,en;q=0.9",
+    ]
+
+    for header in extra_headers or []:
+        command.extend(["--header", header])
+
+    command.append(url)
+
     result = subprocess.run(
-        [
-            "curl",
-            "--silent",
-            "--show-error",
-            "--fail-with-body",
-            "--location",
-            "--user-agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "--header",
-            "Accept-Language: en-GB,en;q=0.9",
-            FIXTURES_URL,
-        ],
+        command,
         capture_output=True,
         text=True,
         timeout=120,
@@ -70,12 +81,37 @@ def fetch_fixtures_html():
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"FA Full-Time request failed: {clean(result.stderr or result.stdout)}")
+        raise RuntimeError(clean(result.stderr or result.stdout))
 
-    html = result.stdout
+    return result.stdout
+
+
+def fetch_fixtures_html():
+    """Use FA directly, then Jina Reader as a Cloudflare-safe fallback."""
+    try:
+        html = curl(FA_URL)
+        if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" not in html.upper():
+            print("Fetched FA Full-Time directly.")
+            return html
+        print("FA Full-Time returned a Cloudflare block; using Jina Reader fallback.")
+    except RuntimeError as exc:
+        print(f"Direct FA request failed: {exc}; using Jina Reader fallback.")
+
+    jina_url = "https://r.jina.ai/" + FA_URL
+    html = curl(
+        jina_url,
+        [
+            "X-Return-Format: html",
+            "X-Engine: browser",
+            "X-No-Cache: true",
+            "X-Timeout: 60",
+        ],
+    )
+
     if "YOU HAVE BEEN PREVENTED FROM ACCESSING THIS PAGE" in html.upper():
-        raise RuntimeError("FA Full-Time returned a Cloudflare access-block page.")
+        raise RuntimeError("Both FA Full-Time and the Jina Reader returned a Cloudflare access-block page.")
 
+    print("Fetched FA Full-Time through Jina Reader.")
     return html
 
 
@@ -84,10 +120,6 @@ def parse_fixtures(html):
     fixtures = []
 
     for row in soup.select(".fixtures-table table tbody tr"):
-        cells = row.find_all("td", recursive=False)
-        if not cells:
-            continue
-
         def cell_text(css_class):
             cell = row.select_one(f"td.{css_class}")
             return clean(cell.get_text(" ", strip=True)) if cell else ""
@@ -97,7 +129,6 @@ def parse_fixtures(html):
         if not home or not away:
             continue
 
-        # FA Full-Time uses left/cell-divider cells for date, venue and competition.
         left_cells = row.select("td.left.cell-divider")
         left_text = [clean(cell.get_text(" ", strip=True)) for cell in left_cells]
         if not left_text:
@@ -109,14 +140,8 @@ def parse_fixtures(html):
             continue
 
         time_match = re.search(r"\b(\d{1,2}:\d{2})\b", date_text)
-        time = time_match.group(1) if time_match else ""
-
-        # On the current FA layout the remaining left-divider cells are venue and competition.
-        venue = left_text[1] if len(left_text) > 1 else ""
-        competition = left_text[2] if len(left_text) > 2 else ""
-
-        type_cell = row.select_one("td.bold.cell-divider a")
-        fixture_type = clean(type_cell.get_text(" ", strip=True)) if type_cell else ""
+        fixture_type_link = row.select_one("td.bold.cell-divider a")
+        fixture_type = clean(fixture_type_link.get_text(" ", strip=True)) if fixture_type_link else ""
 
         id_link = row.select_one('a[href*="id="]')
         id_match = re.search(r"[?&]id=(\d+)", id_link.get("href", "")) if id_link else None
@@ -128,11 +153,11 @@ def parse_fixtures(html):
                 "type": fixture_type,
                 "date": fixture_date.strftime("%d/%m/%Y"),
                 "sort_date": fixture_date.isoformat(),
-                "time": time,
+                "time": time_match.group(1) if time_match else "",
                 "home": home,
                 "away": away,
-                "venue": venue,
-                "competition": competition,
+                "venue": left_text[1] if len(left_text) > 1 else "",
+                "competition": left_text[2] if len(left_text) > 2 else "",
             }
         )
 
@@ -153,7 +178,7 @@ def main():
         fixture
         for fixture in all_fixtures
         if datetime.fromisoformat(fixture["sort_date"]).date() >= today
-        and normalise_venue(fixture["venue"]) == TARGET_VENUE
+        and is_target_venue(fixture["venue"])
     ]
 
     unique = {}
@@ -169,11 +194,7 @@ def main():
 
     fixtures = sorted(
         unique.values(),
-        key=lambda fixture: (
-            fixture["sort_date"],
-            fixture["time"],
-            fixture["home"],
-        ),
+        key=lambda fixture: (fixture["sort_date"], fixture["time"], fixture["home"]),
     )
 
     for fixture in fixtures:
