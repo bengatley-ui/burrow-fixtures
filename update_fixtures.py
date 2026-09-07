@@ -51,10 +51,15 @@ def parse_date(text):
 def extract_fixtures(page):
     fixtures = []
 
-    for table in page.locator("table").all():
+    tables = page.locator("table").all()
+    print(f"Found {len(tables)} tables on page")
+
+    for table in tables:
         headers = [clean(th.inner_text()) for th in table.locator("thead th").all()]
         if not headers:
             continue
+
+        print("Table headers:", headers)
 
         indexes = {
             "venue": next((i for i, h in enumerate(headers) if "venue" in h.casefold()), None),
@@ -97,7 +102,6 @@ def extract_fixtures(page):
 
 def discover_page_urls(page):
     page_urls = {page.url}
-
     for link in page.locator("a").all():
         try:
             text = clean(link.inner_text())
@@ -106,7 +110,6 @@ def discover_page_urls(page):
                 page_urls.add(urljoin(page.url, href))
         except Exception:
             continue
-
     return page_urls
 
 
@@ -116,11 +119,13 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-
         try:
             print("Opening FA fixtures...")
             page.goto(FA_URL, wait_until="networkidle", timeout=120000)
             page.wait_for_timeout(3000)
+            print("Page title:", page.title())
+            print("Page URL:", page.url)
+            print("Body preview:", clean(page.locator("body").inner_text())[:3000])
 
             page_urls = discover_page_urls(page)
             print(f"Found {len(page_urls)} fixture pages.")
@@ -137,31 +142,15 @@ def main():
             browser.close()
 
     today = datetime.now().date()
-    upcoming = [
-        fixture for fixture in all_fixtures
-        if datetime.fromisoformat(fixture["sort_date"]).date() >= today
-    ]
-
-    fixtures = [
-        fixture for fixture in upcoming
-        if normalise_venue(fixture["venue"]) == TARGET_VENUE
-    ]
+    upcoming = [f for f in all_fixtures if datetime.fromisoformat(f["sort_date"]).date() >= today]
+    fixtures = [f for f in upcoming if normalise_venue(f["venue"]) == TARGET_VENUE]
 
     unique = {}
     for fixture in fixtures:
-        key = (
-            fixture["sort_date"],
-            fixture["time"],
-            fixture["home"],
-            fixture["away"],
-            normalise_venue(fixture["venue"]),
-        )
+        key = (fixture["sort_date"], fixture["time"], fixture["home"], fixture["away"], normalise_venue(fixture["venue"]))
         unique[key] = fixture
 
-    fixtures = sorted(
-        unique.values(),
-        key=lambda fixture: (fixture["sort_date"], fixture["time"], fixture["home"]),
-    )
+    fixtures = sorted(unique.values(), key=lambda f: (f["sort_date"], f["time"], f["home"]))
 
     for fixture in fixtures:
         fixture.pop("sort_date", None)
